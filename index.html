@@ -1,152 +1,214 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html>
   <head>
-    <title>Thành cổ Quảng Trị - Xem 3D với ảnh tùy chỉnh</title>
-    <script src="https://cesium.com/downloads/cesiumjs/releases/1.134/Build/Cesium/Cesium.js"></script>
+    <title>Thành cổ Quảng Trị - Bản đồ 3D + Ảnh 3D Panorama</title>
+    <!-- Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAFWOho3f9MfMHWi3v7_jE7fVhrQDarPOg"></script>
+    <!-- Pannellum CSS & JS từ CDN ổn định -->
     <link
-      href="https://cesium.com/downloads/cesiumjs/releases/1.134/Build/Cesium/Widgets/widgets.css"
       rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/pannellum/2.5.6/pannellum.css"
     />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pannellum/2.5.6/pannellum.js"></script>
     <style>
-      html,
-      body,
-      #cesiumContainer {
+      #map {
+        height: 100vh;
+        width: 100%;
+      }
+      .gm-style-iw {
+        width: 300px !important;
+      }
+      .gm-style-iw img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+      }
+      .gm-style-iw h3 {
+        margin: 0 0 10px;
+        color: #333;
+      }
+      /* Modal cho Pannellum 3D */
+      #modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
         width: 100%;
         height: 100%;
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        background: #000;
+        background-color: rgba(0, 0, 0, 0.9);
+        overflow: auto;
       }
-      h2 {
+      #modal-content {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      #panorama {
+        width: 100%;
+        height: 100%;
+      }
+      #close-modal {
         position: absolute;
-        top: 10px;
-        left: 10px;
+        top: 20px;
+        right: 35px;
+        color: #f1f1f1;
+        font-size: 40px;
+        font-weight: bold;
+        z-index: 1001;
+        cursor: pointer;
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #close-modal:hover {
+        background: rgba(255, 0, 0, 0.7);
+      }
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: Arial, sans-serif;
+      }
+      #error-msg {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(255, 0, 0, 0.8);
         color: white;
-        z-index: 100;
-        margin: 0;
-        padding: 10px;
-        background: rgba(0, 0, 0, 0.5);
-      }
-      #status {
-        position: absolute;
-        bottom: 10px;
-        left: 10px;
-        color: yellow;
-        z-index: 100;
-        font-size: 12px;
-        background: rgba(0, 0, 0, 0.5);
-        padding: 5px;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        z-index: 1002;
+        display: none;
       }
     </style>
-  </head>
-  <body>
-    <h2>Bản đồ 3D Thành cổ Quảng Trị</h2>
-    <div id="status">Đang load...</div>
-    <div id="cesiumContainer"></div>
     <script>
-      Cesium.Ion.defaultAccessToken =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIwMDM5ODA1Zi01MTIzLTQ3MjQtYmM4MC1jNTljNTg3NzY5ODMiLCJpZCI6MzUwMzQxLCJpYXQiOjE3NjA0MzM0NDd9.8ukepDApCn590T0jpZsLhEpSSueRuu2XszygjoYkl7A";
+      let panoramaViewer; // Biến global cho Pannellum
 
-      async function initViewer() {
-        let terrainProvider = undefined;
-        const statusEl = document.getElementById("status");
+      function initMap() {
+        var citadel = { lat: 16.7505, lng: 107.188 };
+        var map = new google.maps.Map(document.getElementById("map"), {
+          zoom: 18,
+          center: citadel,
+          mapTypeId: "satellite",
+          tilt: 67.5,
+          heading: 0,
+          styles: [
+            {
+              featureType: "poi",
+              elementType: "labels",
+              stylers: [{ visibility: "off" }],
+            },
+          ],
+        });
+        var marker = new google.maps.Marker({
+          position: citadel,
+          map: map,
+          title: "Thành cổ Quảng Trị",
+        });
+        // Popup đơn giản với nút mở 3D
+        var contentString = `
+          <div>
+            <h3>Ảnh Thành cổ Quảng Trị</h3>
+            <img src="images/thanhco.jpg" alt="Ảnh" onerror="this.src='https://via.placeholder.com/300x200?text=Ảnh+lỗi';" style="max-width:100%; height:auto; border-radius:8px;">
+            <p>Click <button onclick="open3DModal()" style="background:#007cba; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">Xem 3D Panorama</button> để khám phá!</p>
+          </div>
+        `;
+        var infowindow = new google.maps.InfoWindow({ content: contentString });
+        marker.addListener("click", function () {
+          infowindow.open(map, marker);
+        });
+        infowindow.open(map, marker);
+      }
 
-        try {
-          if (Cesium.Ion.defaultAccessToken) {
-            statusEl.textContent = "Đang load địa hình 3D...";
-            terrainProvider = await Cesium.createWorldTerrainAsync({
-              requestWaterMask: true,
-              requestVertexNormals: true,
-            });
-            statusEl.textContent =
-              "Đã load thành công! Đang thử load ảnh local...";
-          } else {
-            statusEl.textContent = "Chế độ flat - thêm token cho terrain.";
-          }
-        } catch (error) {
-          console.error("Lỗi load terrain:", error);
-          statusEl.textContent = "Lỗi token: Chạy flat.";
+      // Mở modal 3D
+      function open3DModal() {
+        document.getElementById("modal").style.display = "block";
+        document.getElementById("panorama").innerHTML = "";
+        initPanorama();
+      }
+
+      // Đóng modal
+      function closeModal() {
+        document.getElementById("modal").style.display = "none";
+        if (panoramaViewer) {
+          panoramaViewer.destroy();
+          panoramaViewer = null;
+        }
+      }
+
+      // Khởi tạo Pannellum
+      function initPanorama() {
+        if (typeof pannellum === "undefined") {
+          console.error("Lỗi: Pannellum chưa load.");
+          showError("Lỗi tải Pannellum. Reload trang.");
+          return;
         }
 
-        const viewer = new Cesium.Viewer("cesiumContainer", {
-          terrainProvider: terrainProvider,
-          baseLayerPicker: false,
-          geocoder: true,
-          homeButton: true,
-          sceneModePicker: true,
-          navigationHelpButton: true,
-          animation: false,
-          timeline: false,
-          fullscreenButton: true,
-          sceneMode: Cesium.SceneMode.SCENE3D,
+        // Config viewer
+        panoramaViewer = pannellum.viewer("panorama", {
+          type: "equirectangular",
+          panorama: "images/thanhco.jpg",
+          autoLoad: true,
+          showControls: true,
+          showZoomCtrl: true,
+          showFullscreenCtrl: true,
+          default: {
+            firstScene: "thanhco",
+            author: "Bạn",
+            sceneFadeDuration: 1000,
+          },
+          scenes: {
+            thanhco: {
+              title: "Thành cổ Quảng Trị - Xem 3D",
+              hfov: 110,
+              pitch: 0,
+              yaw: 0,
+              haov: 360,
+              minHfov: 50,
+              maxHfov: 150,
+            },
+          },
+          autoRotate: -2,
         });
 
-        // THÊM ẢNH LOCAL (test trong folder)
-        async function addCustomImage() {
-          const imageUrl = "images/T7M_9205.jpg"; // Relative path cho local
-          try {
-            const rectangle = Cesium.Rectangle.fromDegrees(
-              107.185, // west (chỉnh nếu ảnh lệch)
-              16.748, // south
-              107.191, // east
-              16.753 // north
-            );
-            const customLayer = await Cesium.ImageryLayer.fromProviderAsync(
-              new Cesium.SingleTileImageryProvider({
-                url: imageUrl,
-                rectangle: rectangle,
-                credit: "Ảnh tùy chỉnh", // Tùy chọn: credit hiển thị
-              })
-            );
-            viewer.imageryLayers.add(customLayer, 0); // Phủ lên base map
-            statusEl.textContent +=
-              " | Ảnh local đã load! Zoom vào vùng để xem.";
-            console.log("Ảnh load OK:", imageUrl);
-          } catch (error) {
-            console.error("Lỗi load ảnh local:", error);
-            statusEl.textContent +=
-              " | Lỗi ảnh: Kiểm tra đường dẫn/folder hoặc CORS. Upload public thử nhé!";
-          }
-        }
-        addCustomImage(); // Gọi load ảnh
+        console.log("Pannellum 3D ready! Xoay chuột để khám phá.");
+      }
 
-        // Zoom + tilt 3D (zoom sát hơn để thấy ảnh nếu bounds đúng)
-        const quangTri = Cesium.Cartesian3.fromDegrees(107.188, 16.7505, 200); // Thấp hơn để gần vùng ảnh
-        viewer.camera.setView({
-          destination: quangTri,
-          orientation: {
-            heading: 0,
-            pitch: -0.785, // Tilt mạnh
-            roll: 0,
-          },
-        });
-
-        // Marker
-        viewer.entities.add({
-          position: Cesium.Cartesian3.fromDegrees(107.188, 16.7505, 10),
-          point: {
-            pixelSize: 10,
-            color: Cesium.Color.RED,
-            outlineColor: Cesium.Color.WHITE,
-            outlineWidth: 2,
-          },
-          label: {
-            text: "Thành cổ Quảng Trị",
-            font: "14pt monospace",
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            outlineWidth: 2,
-            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-            pixelOffset: new Cesium.Cartesian2(0, -10),
-          },
-        });
-
+      function showError(msg) {
+        const errorDiv = document.getElementById("error-msg");
+        errorDiv.innerHTML = `<h3>${msg}</h3><p>Console (F12) có chi tiết.</p>`;
+        errorDiv.style.display = "block";
         setTimeout(() => {
-          statusEl.style.display = "none";
+          errorDiv.style.display = "none";
         }, 5000);
       }
 
-      initViewer();
+      // Đóng modal khi click ngoài
+      window.onclick = function (event) {
+        var modal = document.getElementById("modal");
+        if (event.target == modal) {
+          closeModal();
+        }
+      };
     </script>
+  </head>
+  <body onload="initMap()">
+    <h2>Bản đồ 3D Thành cổ Quảng Trị - Click marker để xem ảnh & mở 3D!</h2>
+    <div id="map"></div>
+
+    <div id="modal">
+      <span id="close-modal" onclick="closeModal()">&times;</span>
+      <div id="modal-content">
+        <div id="panorama"></div>
+      </div>
+    </div>
+
+    <div id="error-msg"></div>
   </body>
 </html>
